@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="description" content="視覺循線自走車的開發紀錄與技術說明簡報。"/>
+<title>自走車開發講義庫</title>
+<style>
+:root{--bg:#0a111a;--panel:#111d2a;--line:#293b4d;--text:#eef3f7;--muted:#a6b8c8;--accent:#81e9c7;--warm:#ffbe75;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:18px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC","Microsoft JhengHei","Noto Sans CJK TC",sans-serif}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+.wrap{max-width:1040px;margin:auto;padding:56px 20px 80px}
+.kicker{font:600 12px/1.5 ui-monospace,Consolas,monospace;letter-spacing:.14em;color:var(--accent)}
+h1{font-size:clamp(30px,5vw,44px);line-height:1.25;letter-spacing:-.03em;margin:10px 0 12px}
+.intro{color:var(--muted);max-width:42em;margin:0 0 40px}
+h2{font-size:15px;letter-spacing:.1em;color:var(--muted);font-weight:650;border-bottom:1px solid var(--line);padding-bottom:10px;margin:0 0 20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:20px}
+.card{display:flex;flex-direction:column;padding:24px;border:1px solid var(--line);border-radius:15px;background:linear-gradient(135deg,#132230,#101d29);color:var(--text);transition:border-color .15s,transform .15s}
+.card:hover{border-color:var(--accent);transform:translateY(-2px);text-decoration:none}
+.card .cat{font:600 12px/1.5 ui-monospace,Consolas,monospace;letter-spacing:.08em;color:var(--warm)}
+.card h3{font-size:21px;line-height:1.35;margin:8px 0}
+.card p{color:var(--muted);font-size:15.5px;margin:0 0 16px;flex:1}
+.card .meta{font-size:13px;color:var(--muted);display:flex;justify-content:space-between;align-items:center}
+.card .go{color:var(--accent);font-weight:700}
+.card.soon{border-style:dashed;background:none;opacity:.75}
+footer{margin-top:56px;font-size:13px;color:var(--muted);border-top:1px solid var(--line);padding-top:18px}
+</style></head>
+<body><div class="wrap">
+<div class="kicker">AUTOCAR DEVLOG</div>
+<h1>自走車開發講義庫</h1>
+<p class="intro">一台只靠相機循線的自走車，從第一次跑完整圈到連續多圈的開發紀錄。每份簡報都可以直接在瀏覽器翻頁閱讀。</p>
+
+<h2>簡報</h2>
+<div class="grid">
+<!-- DECK-CARDS:START（新增簡報時在最上方加一張卡片，格式見 AGENTS.md）-->
+<a class="card" href="decks/2026-11-dev-overview/">
+<span class="cat">總覽 · 技術說明</span>
+<h3>怎麼從 110 秒跑到 72 秒</h3>
+<p>系統架構、開發流程、圈速進展、四個關鍵發現、試過但放棄的方法，以及下一步。</p>
+<span class="meta"><span>26 頁 · 資料截至 2026-11-15</span><span class="go">開始 →</span></span>
+</a>
+<!-- DECK-CARDS:END -->
+<div class="card soon"><span class="cat">預告</span><h3>更多主題整理中</h3><p>轉向間隙量測、地標定位、路口走錯的追查過程，之後各自成為一份簡報。</p><span class="meta"><span>—</span></span></div>
+</div>
+
+<footer>本站內容依 <a href="AGENTS.md">AGENTS.md</a> 的規則由 AI 協助製作；更新紀錄見 <a href="log.md">log.md</a>。</footer>
+</div></body></html>

@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="description" content="AI 自走車開發技術說明：系統架構、開發流程、圈速進展、放棄的方法與下一步。"/>
+<title>自走車開發技術說明</title>
+<link rel="stylesheet" href="../../assets/deck.css"/></head>
+<body>
+<main class="deck" data-brand="AUTOCAR DEVLOG" data-sub="視覺循線自走車 · 開發技術說明">
+
+<!-- ============ 00 總覽 ============ -->
+<section class="slide active" data-chapter="00 總覽" data-title="一台只靠相機的自走車，怎麼從 110 秒跑到 72 秒">
+<header class="slide-header"><div class="eyebrow">00 總覽 <span class="tag">開始 · 01</span></div><h1>一台只靠相機的自走車，<br/>怎麼從 110 秒跑到 72 秒</h1><p class="lead">視覺循線自走車 · 開發技術說明（資料截至 2026-11-15）</p></header>
+<div class="slide-content"><div class="cols hero"><div>
+<div class="hero-kicker">CAMERA → SEGMENTATION → PATH → PID → MCU</div>
+<h2 class="hero-title">一圈 67.7 公尺<br/><em>4 個彎、2 個路口、1 座高架。</em></h2>
+<p class="hero-desc">這份簡報說明：系統怎麼組成、每一次修改怎麼驗證、<br/>成績怎麼進步，以及哪些方法試過之後放棄。</p>
+<p><span class="pill">Jetson Orin Nano</span> <span class="pill">影像分割模型 V4</span> <span class="pill">陀螺儀＋編碼器</span> <span class="pill">AI 協作開發</span></p>
+<div class="callout">目前最佳成績：<b>連續多圈、每圈約 72 秒</b>（11-14 單圈最快 71.9 秒）。<br/>第一次完成兩圈是 11-07，每圈 109.9 秒。</div>
+</div><div>
+<figure class="figure"><img src="track-map.webp" alt="跑道示意圖，標有點位 01 到 12、起點旗子與行駛方向"/></figure>
+<span class="figcap">跑道示意圖（點位 01～12，非實際比例）。所有分析都使用這套編號。</span>
+</div></div></div>
+<aside class="teacher-note"><b>講者備註</b>開場先講「只靠一顆相機循線」與「一圈有哪些難點」，再帶出成績。圖是示意，不含實量尺寸。</aside>
+</section>
+
+<section class="slide" data-chapter="00 總覽" data-title="跑道與難點" data-lead="同一圈裡有四種完全不同的路況，每一段的失敗方式都不一樣。">
+<div class="slide-content"><div class="cols"><div>
+<div class="table-wrap"><table><thead><tr><th>路段</th><th>點位</th><th>特徵</th><th>主要難點</th></tr></thead><tbody>
+<tr><td>彎 1</td><td>01～02</td><td>右彎 150°、半徑約 1.28 m</td><td>高速直線後進彎，舵機容易打到底</td></tr>
+<tr><td>斜線＋路口</td><td>02～03</td><td>穿過隧道口與圓圈交叉</td><td>地上有 V 字標線，容易被當成邊線</td></tr>
+<tr><td>彎 2</td><td>03～04</td><td>右彎 210°、半徑約 1.18 m</td><td>最急的彎；出彎後緊接圓圈路口</td></tr>
+<tr><td>彎 3</td><td>06～09</td><td>右彎約 268° 迴圈，尾段上坡</td><td>彎中丟線；上坡時車速掉太多</td></tr>
+<tr><td>上段</td><td>09～10</td><td>高架、虛線左轉約 87°</td><td>只有虛線可跟，轉完後沒有橫向參考</td></tr>
+<tr><td>下坡＋彎 4</td><td>10～12</td><td>約 17.5° 下坡後接 180° 右彎</td><td>落地瞬間影像劇烈變化，容易轉不夠</td></tr>
+</tbody></table></div>
+</div><div>
+<div class="box"><h3>場地數字</h3><ul>
+<li>一圈長度：<b>67.7 m</b>（各圈誤差約 0.24 m）</li>
+<li>車道內寬：<b>46 cm</b>；車身最寬 32 cm，左右各剩約 7 cm</li>
+<li>一圈總轉角：約 −714°（右轉為主）</li>
+<li>半徑：彎 1／2／4 為實量，彎 3 未量</li></ul></div>
+<div class="callout warn">左右只有 7 cm 餘裕：車頭偏 1° 走 3 公尺就會漂掉約 5 cm。</div>
+</div></div></div>
+</section>
+
+<section class="slide" data-chapter="00 總覽" data-title="車上視角：完整跑一圈" data-lead="11-15 實跑紀錄的第 2 圈，72.1 秒，原速播放。">
+<div class="slide-content"><figure class="figure dark wide"><video controls preload="none" poster="lap-poster.jpg" src="lap.webm"></video></figure>
+<span class="figcap">綠色：分割模型認出的白線。橘線：估計出的車道中心。下方：車速、油門與轉向命令，全部取自車上當時的紀錄，不是事後重算。</span></div>
+<aside class="teacher-note"><b>講者備註</b>可以邊放邊講：斜線過路口（約 5～15 秒）、彎 3 迴圈接上坡、高架上的虛線左轉、下坡落地接彎 4。影片中車速最慢的地方就是虛線左轉。</aside>
+</section>
+<section class="slide" data-chapter="00 總覽" data-title="六個路段在相機裡的樣子" data-lead="同一顆相機、同一個模型，要處理差異這麼大的畫面。">
+<div class="slide-content"><figure class="figure dark wide"><img src="segments.jpg" alt="六張車上相機畫面：彎 2、圓圈路口、彎 3、高架轉彎後、下坡、坡底接彎 4，疊上白線遮罩與車道中心"/></figure>
+<div class="cards" style="margin-top:18px"><div class="box"><h3>彎道只看得到一條線</h3><p>彎 2、彎 3 的內側線常在畫面外，只能靠一條線加上記住的車道寬推算中心。</p></div>
+<div class="box"><h3>路口有多餘的線</h3><p>圓圈路口與下坡時，畫面裡同時有別條車道的線，要判斷哪一條才是自己的。</p></div>
+<div class="box"><h3>高架上沒有車道線</h3><p>轉彎後只有中間的虛線，兩側邊線很遠；最後一公尺連虛線也沒有。</p></div></div></div>
+</section>
+
+<!-- ============ 01 系統 ============ -->
+<section class="slide" data-chapter="01 系統" data-title="硬體組成" data-lead="三層：負責「看與決定」的 Orin、負責「動」的微控制器、負責「觀察與分析」的筆電。">
+<div class="slide-content"><div class="cards">
+<div class="box"><h3>Jetson Orin Nano（車上）</h3><ul><li>相機擷取（640×360）</li><li>影像分割模型推論（GPU）</li><li>路徑估計與 PID 控制迴圈</li><li>陀螺儀紀錄 50 Hz</li><li>每一輪完整紀錄（影像、遮罩、每格命令）</li></ul></div>
+<div class="box"><h3>BMduino 微控制器（車上）</h3><ul><li>透過 UART 接收 Orin 命令</li><li>經 I²C 的 PCA9685 輸出舵機與馬達 PWM</li><li>讀取雙輪編碼器</li><li>急停按鈕、500 ms 無命令自動停車</li><li>油門上限 50%（韌體限制）</li></ul></div>
+<div class="box"><h3>筆電工作台</h3><ul><li>參數設定、下達任務、顯示結果</li><li>下載每輪紀錄做離線分析</li><li>離線重播：用錄到的資料重跑控制程式</li><li>不參與即時控制，斷線不影響車子跑完該輪</li></ul></div>
+</div>
+<div class="table-wrap" style="margin-top:22px"><table><thead><tr><th>項目</th><th>規格</th><th>狀態</th></tr></thead><tbody>
+<tr><td>輪徑／車寬</td><td>7.5 cm／32 cm（輪胎最外側）</td><td>實量</td></tr>
+<tr><td>相機最近可見地面</td><td>前輪最前緣往前 27 cm</td><td>實量</td></tr>
+<tr><td>相機型號、舵機與馬達型號、電池規格</td><td><span class="todo">待補</span></td><td>需要本人提供</td></tr>
+<tr><td>整車照片</td><td><span class="todo">待補</span></td><td>需要本人提供</td></tr>
+</tbody></table></div></div>
+<aside class="teacher-note"><b>講者備註</b>強調「即時控制全部在車上」：筆電畫面延遲不等於控制延遲，這是早期常被混在一起的兩件事。</aside>
+</section>
+
+<section class="slide" data-chapter="01 系統" data-title="接線：誰接到誰" data-lead="Orin 只透過一條 UART 對微控制器下命令；所有 PWM 都由微控制器經 PCA9685 輸出。">
+<div class="slide-content"><div class="cols"><div><figure class="figure"><img src="wiring.jpg" alt="接線圖：Jetson Orin Nano、BMduino、PCA9685、馬達驅動板與兩顆附編碼器的馬達"/></figure>
+<span class="figcap">專案接線圖。<span class="todo">待確認</span> 是否與目前車上一致（11-11 重新組裝過）。</span></div>
+<div><div class="table-wrap"><table><thead><tr><th>連接</th><th>說明</th></tr></thead><tbody>
+<tr><td>Orin ↔ BMduino</td><td>UART，經 74HC125 做 3.3 V／5 V 電位轉換</td></tr>
+<tr><td>BMduino → PCA9685</td><td>I²C；16 通道 PWM 模組，輸出舵機與馬達驅動訊號</td></tr>
+<tr><td>PCA9685 → 馬達驅動板</td><td>兩顆馬達的 PWM 與方向訊號（另有 74LS14 做訊號整形）</td></tr>
+<tr><td>馬達編碼器 → BMduino</td><td>兩輪各一組 A／B 相訊號</td></tr>
+<tr><td>急停按鈕 → BMduino</td><td>直接進微控制器腳位，不經 Orin</td></tr>
+</tbody></table></div>
+<div class="callout warn">I²C 與 UART 都曾因雜訊出錯：I²C 寫入失敗會讓馬達通道停擺，UART 一筆回覆損壞曾直接結束整輪。兩者後來都加了重試與容錯。</div></div></div></div>
+</section>
+
+<section class="slide" data-chapter="01 系統" data-title="從影像到輪子：一格資料的旅程" data-lead="每 0.1 秒一格。景物出現在畫面到輪子真的轉動，大約要 0.36 秒。">
+<div class="slide-content">
+<div class="pipeline"><span>相機<br/><small>640×360</small></span><b>→</b><span>分割模型 V4<br/><small>白線遮罩</small></span><b>→</b><span>路徑估計<br/><small>車道中心</small></span><b>→</b><span>PID＋各路段模組<br/><small>舵機與油門</small></span><b>→</b><span>UART → 微控制器<br/><small>PWM 輸出</small></span></div>
+<figure class="figure dark wide"><img src="pipeline.jpg" alt="同一格的相機原圖、模型輸出的白線遮罩、疊上車道中心的結果"/></figure>
+<div class="cols" style="margin-top:18px"><div>
+<h3>路徑估計在做什麼</h3>
+<ul><li>看得到兩條邊線：取中間。</li><li>只看得到一條：用「這條線＋記住的車道寬」推算中心。</li><li>路口另有切換器：判斷主路徑不可信時改用備用走廊。</li><li>輸出「影像誤差」：車道中心相對畫面中心的偏移（1.0 約等於 40 cm）。</li></ul>
+</div><div>
+<h3>控制在做什麼</h3>
+<ul><li>PID 把影像誤差變成舵機命令（目前 kp 220／ki 40／kd 30）。</li><li>陀螺儀內迴圈：抑制車頭擺動。</li><li>轉向間隙補償：換方向時多送 ±55 µs。</li><li>速度排程：依誤差、彎道、坡度決定油門。</li><li>各路段模組：路口、上段、坡底各有專屬處理。</li></ul>
+</div></div>
+<div class="callout">延遲的組成（實測擬合）：相機到控制約 0.10 秒＋命令到輪子的純延遲 0.10 秒＋機構反應。車速 1.25 m/s 時，前視距離 0.64 m 裡有約 0.4 m 在輪子反應前就走完了。</div>
+</div>
+</section>
+
+<section class="slide" data-chapter="01 系統" data-title="不靠相機也知道自己在哪：地標定位" data-lead="用陀螺儀累積轉角、俯仰角與編碼器里程，辨識一圈 13 個地標。">
+<div class="slide-content"><div class="cols"><div>
+<ul class="steps">
+<li><span><b>地標</b>：每個彎的起點與終點（累積轉角越過門檻）、坡道、坡頂、下坡、落地、虛線轉彎起訖。</span></li>
+<li><span><b>里程</b>：地標之間用編碼器算距離，誤差約 ±0.2 m。</span></li>
+<li><span><b>用途</b>：路口保護窗口、減速區、各彎油門都改成「以地標為錨點」，不再依賴影像判斷彎道結束。</span></li>
+</ul>
+<div class="checkpoint"><b>實測</b><span>首次上車 4 圈 × 13 地標＝52／52 全部找到；圈內位置誤差中位約 0.3 m。</span></div>
+</div><div>
+<div class="box"><h3>為什麼需要它</h3><p>原本用影像判斷「彎 2 結束了」，實際會晚 1.7～8.2 m。路口保護窗口因此開在錯的位置，造成多次走錯跑道或撞柱。</p><p>改用地標後，窗口位置固定在彎 2 結束後約 3 m，誤差 0.3 m 內。</p></div>
+<div class="callout warn">限制：地標定位只回答「在哪一段」，不能用來盲走。實測各圈車頭方向可差 2～6°，「記住一圈照著走」橫偏會超過 7 cm 餘裕。</div>
+</div></div></div>
+</section>
+
+<section class="slide" data-chapter="01 系統" data-title="安全設計" data-lead="動車的權限與停車的條件，都寫成明確規則。">
+<div class="slide-content"><div class="cols"><div>
+<div class="table-wrap"><table><thead><tr><th>保護</th><th>條件</th></tr></thead><tbody>
+<tr><td>實體急停</td><td>按鈕直接進微控制器；韌體加 10 ms 去彈跳，避免雜訊誤觸</td></tr>
+<tr><td>命令逾時</td><td>微控制器 500 ms 沒收到命令即停車</td></tr>
+<tr><td>影像過期</td><td>控制用影像超過 0.4 秒即停車</td></tr>
+<tr><td>丟線</td><td>持續沒有有效路徑即結束該輪</td></tr>
+<tr><td>卡住偵測</td><td>有油門但兩輪幾乎不轉持續 1 秒即停車</td></tr>
+<tr><td>下坡過速</td><td>輪速超過門檻時壓低油門</td></tr>
+</tbody></table></div>
+</div><div>
+<div class="box"><h3>給 AI 的動車規則</h3><ul>
+<li>沒有當次明確授權，不發舵機或馬達命令、不燒錄、不重啟車控服務。</li>
+<li>每次部署前先備份車上現況，並記下退回方式。</li>
+<li>「模型辨識成功」「離線重播通過」不等於「實車可安全行駛」，報告時分開寫。</li></ul></div>
+<div class="callout">卡住偵測的由來：11-13 車頂在牆上後，馬達仍持續推了約 5 秒才被人工停下。之後用那次紀錄定門檻，61 輪正常行駛 0 次誤觸發。</div>
+</div></div></div>
+</section>
+
+<!-- ============ 02 開發流程 ============ -->
+<section class="slide" data-chapter="02 開發流程" data-title="每一項修改怎麼上車" data-lead="先離線、後上車；先證明沒改到別的、再打開新功能。">
+<div class="slide-content">
+<div class="pipeline"><span>① 實跑紀錄<br/><small>影像、遮罩、每格命令</small></span><b>→</b><span>② 離線分析<br/><small>找出機制</small></span><b>→</b><span>③ 候選程式<br/><small>附開關</small></span><b>→</b><span>④ 重播證明<br/><small>開關關閉＝逐格相同</small></span><b>→</b><span>⑤ 上車驗證<br/><small>看數字決定留或退</small></span></div>
+<div class="cards">
+<div class="box"><h3>開關全關＝逐格相同</h3><p>新程式上車前，先用過去的實跑紀錄重播數萬到十幾萬格，確認在開關關閉時，舵機、油門、停車時機與原版完全一樣。這樣上車後若行為改變，就確定是新功能造成的。</p></div>
+<div class="box"><h3>每項都有退回條件</h3><p>開啟前先寫下「看到什麼數字就退回」。例如補償門檻 30→60 預期減少擺動，實跑反而擺幅變大、圈速慢 3 秒，當場依規則退回。</p></div>
+<div class="box"><h3>不同路段可以同輪測</h3><p>管不同路段的修改互不影響，可以同一輪一起開；會互相影響的（例如上段油門與虛線轉彎）就分開測。</p></div>
+</div>
+<div class="callout warn">重播的限制：只能證明「程式沒改到不該改的」，不能預測車子實際會怎麼走。閉迴路行為只有實車才知道，簡報中凡是離線估計都會標明。</div>
+</div>
+<aside class="teacher-note"><b>講者備註</b>這一頁是整個專案方法上最重要的一頁。可以舉 11-15 的例子：三個離線看起來都合理的修改，上車後兩個變差、當場退回。</aside>
+</section>
+
+<section class="slide" data-chapter="02 開發流程" data-title="和 AI 協作的方式" data-lead="規則檔決定 AI 怎麼工作；人負責現場、授權與最後判斷。">
+<div class="slide-content"><div class="cols"><div>
+<h3>分工</h3>
+<div class="table-wrap"><table><thead><tr><th>誰</th><th>做什麼</th></tr></thead><tbody>
+<tr><td>人</td><td>現場操作、觀察車子、量尺寸、每次動車與部署的授權、決定方向</td></tr>
+<tr><td>主對話 AI</td><td>分析紀錄、提出方案、連線部署、複核子代理的結果</td></tr>
+<tr><td>離線子代理</td><td>各自在獨立資料夾做一個題目，交回摘要與證明，不連車</td></tr>
+</tbody></table></div>
+<div class="callout">子代理交回的結果一律由主對話複核（雜湊、測試、抽查逐格資料）後才採用；曾因此更正多個先前的錯誤結論。</div>
+</div><div>
+<h3>規則檔（AGENTS.md）裡寫了什麼</h3>
+<ul><li>統一的跑道地圖與彎道編號。</li><li>動車、燒錄、重啟的授權界線。</li><li>「已驗證」與「未驗證」必須分開說明。</li><li>筆電延遲與車上控制延遲要分開判斷。</li><li>目前車上的完整狀態與每次變更的備份位置。</li></ul>
+<div class="callout warn">目前的問題：規則與每日工作紀錄寫在同一個檔案，已長到 28 萬字元。這個網站專案就是改用「規則檔＋索引＋紀錄」分開的做法。</div>
+</div></div></div>
+</section>
+
+<!-- ============ 03 進展 ============ -->
+<section class="slide" data-chapter="03 進展" data-title="開發時間線" data-lead="大致分成五個階段。">
+<div class="slide-content"><div class="table-wrap"><table><thead><tr><th>時間</th><th>階段</th><th>做了什麼</th><th>結果</th></tr></thead><tbody>
+<tr><td class="num">10 月中</td><td>影像辨識與工作台</td><td>錄影、標註、訓練分割模型（V1～V5）；建立筆電工作台與安全的車控入口</td><td>採用 V4；V5 未通過整體驗證，不取代</td></tr>
+<tr><td class="num">10 月下旬</td><td>路徑算法檢討</td><td>27 輪 5,418 格重播比較；人工判讀 4 輪；改用獨立的線估計算法</td><td>路徑計算由約 47 ms 降到約 2 ms（筆電）</td></tr>
+<tr><td class="num">11-07～08</td><td>首次完成整圈</td><td>加入陀螺儀、彎道地圖、速度排程</td><td>兩圈，每圈 109.9 → 93.0 秒</td></tr>
+<tr><td class="num">11-10～11</td><td>逐項補丁</td><td>兩天內約 40 項修改，逐輪調整</td><td>最快 85.8 秒，但完成率低；六輪連續失敗後決定凍結</td></tr>
+<tr><td class="num">11-12～13</td><td>量測與整合</td><td>實測轉向間隙；盤點 72 層控制；重構成分段表；整合版上車</td><td>連續 5 圈約 82 秒、無失敗</td></tr>
+<tr><td class="num">11-14～15</td><td>定位與提速</td><td>地標定位、位置式減速區、各彎油門、坡底改裝</td><td>連續多圈約 72 秒</td></tr>
+</tbody></table></div>
+<div class="callout">轉折點在 11-11 晚上：從「一輪改一項」改成「凍結設定、連跑多輪只記錄、離線找出機制後一次整合」。</div>
+</div>
+</section>
+
+<section class="slide" data-chapter="03 進展" data-title="圈速進展" data-lead="單圈時間（秒）。11-13 之後的數字都是連續多圈中的成績。">
+<div class="slide-content"><div class="table-wrap"><table><thead><tr><th>日期</th><th>單圈</th><th style="width:38%"></th><th>主要變更</th></tr></thead><tbody>
+<tr><td class="num">11-07</td><td class="num">109.9</td><td><span class="bar old" style="width:100%"></span></td><td>首次兩圈</td></tr>
+<tr><td class="num">11-08</td><td class="num">93.0</td><td><span class="bar old" style="width:84.6%"></span></td><td>控制參數調整</td></tr>
+<tr><td class="num">11-11</td><td class="num">85.8</td><td><span class="bar old" style="width:78.1%"></span></td><td>彎道與路口多項修正（當時完成率低）</td></tr>
+<tr><td class="num">11-12</td><td class="num">81.9</td><td><span class="bar old" style="width:74.5%"></span></td><td>轉向間隙補償 ±55 µs</td></tr>
+<tr><td class="num">11-13</td><td class="num">82.2～82.8</td><td><span class="bar old" style="width:75.0%"></span></td><td>整合版；首次連續 5 圈無失敗</td></tr>
+<tr><td class="num">11-14 下午</td><td class="num">79.3～80.7</td><td><span class="bar old" style="width:72.8%"></span></td><td>微分增益 60→30、路口影像修正、落地油門</td></tr>
+<tr><td class="num">11-14 傍晚</td><td class="num">73.3～76.8</td><td><span class="bar old" style="width:68.2%"></span></td><td>加速反應加快、彎 4 油門、上坡保底、上段提速</td></tr>
+<tr><td class="num">11-14 收工</td><td class="num">71.9～72.9</td><td><span class="bar" style="width:65.9%"></span></td><td>地標定錨、彎 1 油門、坡底改裝</td></tr>
+<tr><td class="num">11-15</td><td class="num">71.8～72.8</td><td><span class="bar" style="width:65.7%"></span></td><td>彎 3 丟線修正、彎 2 舵量下限（圈速不變，可靠性提高）</td></tr>
+</tbody></table></div>
+<div class="cards"><div class="box"><h3>11-14 一天 −7.6 秒</h3><p>80.35 → 72.6 秒。有事先估計的項目，實得與預估都相符（例如預估 −1.82 秒、實得 −1.80 秒）。</p></div>
+<div class="box"><h3>平均車速</h3><p>67.7 m ÷ 72 秒 ≈ 0.94 m/s。油門上限 50% 時平地極速約 1.22 m/s。</p></div>
+<div class="box"><h3>全油門時間只有 14%</h3><p>一圈中約 32% 是彎道或誤差大的低油門，約 22% 在等誤差穩定或爬升。</p></div></div>
+</div>
+</section>
+
+<section class="slide" data-chapter="03 進展" data-title="一圈的車速與油門" data-lead="11-15 的一圈（72.1 秒）。上：車速；下：油門命令。底色區分路段。">
+<div class="slide-content"><figure class="figure dark wide"><img src="lap-speed.png" alt="一圈內車速與油門對圈內位置的折線圖，標示彎 1、斜線、彎 2、路口、左彎、彎 3、上坡、上段、彎 4、主直線"/></figure>
+<div class="cards" style="margin-top:18px"><div class="box"><h3>全油門只出現在三段直線</h3><p>斜線、圓圈路口前後、主直線。其餘時間油門多在 28% 上下。</p></div>
+<div class="box"><h3>最慢的地方在高架</h3><p>虛線左轉時車速掉到約 0.4 m/s；整個上段平均只有約 0.6 m/s。</p></div>
+<div class="box"><h3>彎道約 0.9 m/s</h3><p>四個彎的車速差不多，但彎 4 半徑是其他彎的兩倍，還有提速空間。</p></div></div></div>
+<aside class="teacher-note"><b>講者備註</b>車速由編碼器里程對時間計算，編碼器每 0.2 秒回報一次，圖上已做約 1 秒的平滑。</aside>
+</section>
+
+<section class="slide" data-chapter="03 進展" data-title="可靠性：各路段通過率" data-lead="整合版（11-14 傍晚）之後，約 40 圈只有 1 次失敗。">
+<div class="slide-content"><div class="cols"><div>
+<div class="table-wrap"><table><thead><tr><th>時期</th><th>完整圈</th><th>失敗</th></tr></thead><tbody>
+<tr><td>11-13（整合前）</td><td class="num">約 11</td><td class="num bad">6</td></tr>
+<tr><td>11-14 整合版之前</td><td class="num">—</td><td class="num bad">6 次碰撞或出界</td></tr>
+<tr><td>11-14 整合版之後</td><td class="num">25</td><td class="num ok">0</td></tr>
+<tr><td>11-15</td><td class="num">約 15</td><td class="num">1（坡底轉不夠）</td></tr>
+</tbody></table></div>
+<p class="small">三天 44 輪共 31 次失敗的位置（11-11～13）：彎 2 後圓圈路口 11、上段 6、下坡與坡底 6、彎 3 2、彎 2 2、彎 1 與 V 字 2、彎 4 1。</p>
+</div><div>
+<div class="box"><h3>目前剩下的風險（依序）</h3><ol style="margin:0;padding-left:1.3em">
+<li>落地後轉不夠（約三分之一的落地會壓到外側）</li>
+<li>彎 2 彎中舵機打到底</li>
+<li>虛線轉彎中途看丟虛線</li>
+<li>上段轉完後沒有橫向參考</li>
+<li>彎 1 油門提高後舵機餘裕不足</li></ol></div>
+<div class="callout warn">每一項都已有離線候選修正，尚未實車驗證。</div>
+</div></div></div>
+</section>
+
+<!-- ============ 04 關鍵發現 ============ -->
+<section class="slide" data-chapter="04 關鍵發現" data-title="發現一：轉向機構有很大的間隙" data-lead="舵機換方向時，前 155 µs 的命令輪子完全不動。">
+<div class="slide-content"><div class="cols"><div>
+<h3>怎麼量的</h3>
+<ul class="steps"><li><span>在平地地墊上，相機不參與；用陀螺儀與編碼器量車子實際的彎度。</span></li>
+<li><span>舵機命令每 0.8 秒走一階 20 µs，由右到左、再由左到右。</span></li>
+<li><span>比較兩個方向下，同一個命令對應的彎度差多少。</span></li></ul>
+<div class="checkpoint"><b>結果</b><span>遲滯 155 µs（95% 區間 149～160）；8 趟、三組重複，組間差 14%。</span></div>
+</div><div>
+<div class="box"><h3>影響</h3><ul><li>出彎後車子會固定偏一邊走 2～3 秒（命令變了、輪子沒動）。</li><li>小幅修正被間隙吃掉，控制器以為沒效而加大。</li></ul></div>
+<div class="box" style="margin-top:14px"><h3>處理</h3><ul><li>在輸出最後一步做一次反轉補償 ±55 µs（合計 110，約為量到的七成）。</li><li>直線誤差中位由 0.26～0.39 降到 0.06～0.19。</li><li>副作用：先前在「有間隙」下調好的參數變得太強，後來把微分增益由 60 降到 30。</li></ul></div>
+</div></div></div>
+<aside class="teacher-note"><b>講者備註</b>這是「先量測、再設計」的代表例子。量之前由舊紀錄粗估只有 40～70 µs，實測是 155。</aside>
+</section>
+
+<section class="slide" data-chapter="04 關鍵發現" data-title="發現二：72 層控制互相打架" data-lead="補丁累積到一定程度後，問題不再是缺功能，而是功能互相干擾。">
+<div class="slide-content"><div class="cols"><div>
+<div class="box"><h3>盤點結果（11-12）</h3><ul>
+<li>會改寫舵機命令的位置約 30 處，共 72 層。</li>
+<li>當天實際改到命令的 39 層、開著但從未觸發的 10 層、已關閉但還在程式裡的 10 層。</li>
+<li>兩套間隙補償互相觸發：上段 75% 的格子命令跳動超過 100 µs。</li>
+<li>「看似相同其實不同」的條件 11 組，例如四種「坡底平地」的定義、四個陡坡門檻。</li></ul></div>
+</div><div>
+<h3>整理方式</h3>
+<ul class="steps">
+<li><span>做重播工具，能逐格比對兩版程式的輸出。</span></li>
+<li><span>刪掉 11 個已關閉或只記錄的層。</span></li>
+<li><span>把主迴圈重構成「先判斷目前在哪個路段，再依序執行該路段的層」。</span></li>
+<li><span>每一步都證明輸出與前一版逐格相同（共 5 萬多格）。</span></li></ul>
+<div class="callout">重構本身不改變任何行為，但之後每個問題都能回答「這一格是哪一層決定的」。</div>
+</div></div></div>
+</section>
+
+<section class="slide" data-chapter="04 關鍵發現" data-title="發現三：路口走錯的真正原因" data-lead="同一個路口兩天內走錯四次，前後提出過三種解釋，最後一種才對。">
+<div class="slide-content"><div class="table-wrap"><table><thead><tr><th>當時的解釋</th><th>依據</th><th>後來的結論</th></tr></thead><tbody>
+<tr><td>相機認錯線</td><td>路口內影像誤差突然反向</td><td>部分不成立：多數時候相機是對的，車道中心確實在車的右側</td></tr>
+<tr><td>車速太快</td><td>走錯那圈進路口較快</td><td>不成立：12 次通過都是 1.12～1.25 m/s，把另一個路口搞混了</td></tr>
+<tr><td>保護窗口位置錯</td><td>彎道結束判定晚 2～8 m</td><td>成立：改用地標定錨後窗口位置固定</td></tr>
+<tr><td>車道線與圓圈標線接成「&lt;」形</td><td>逐格重跑路徑估計</td><td>成立：線沿著標線延伸到另一條車道；改在地面座標檢查轉折與方向後，走錯格數大幅減少</td></tr>
+</tbody></table></div>
+<div class="callout warn">教訓：單看一輪容易下錯結論。後來的規則是「同一個失敗重複出現才處理，並且用全部通過與失敗的紀錄一起比」。</div>
+</div>
+</section>
+
+<section class="slide" data-chapter="04 關鍵發現" data-title="路口走錯：畫面上發生了什麼" data-lead="11-12 的一次走錯，約 3.5 秒內的八格畫面（由左到右、由上到下）。">
+<div class="slide-content"><figure class="figure dark wide"><img src="crossing-wrong-lane.jpg" alt="八格連續的車上畫面：車子在圓圈路口逐漸左轉，最後進入左側另一條車道"/></figure>
+<div class="cols" style="margin-top:18px"><div>
+<ul><li>前兩格：左邊的車道線在前方與圓圈標線接成「&lt;」形。</li><li>第三、四格：車已經開始左偏，原本的右線移出畫面。</li><li>下排：相機改跟左側那條線，車子進了隧道方向的另一條車道。</li></ul>
+<div class="callout">全程影像都「有效」、誤差都不大，所以沒有任何保護被觸發。</div>
+</div><div>
+<figure class="figure dark"><img src="crossing-fix.jpg" alt="同兩格的遮罩：左為原本的路徑估計沿著標線彎向左邊，右為修正後維持直行"/></figure>
+<span class="figcap">同一時刻的遮罩。左：原本的估計（黃線）跟著標線往左彎。右：加上「轉折超過 15° 就切斷、方向不合就不採用」之後（藍線）維持原車道方向。此圖為離線重播結果。</span>
+</div></div></div>
+</section>
+
+<section class="slide" data-chapter="04 關鍵發現" data-title="發現四：提速的瓶頸不在油門上限" data-lead="油門上限 50% 的理論最快圈速約 60 秒，但目前的限制在別的地方。">
+<div class="slide-content"><div class="cards two">
+<div class="box"><h3>彎道受限於轉向能力</h3><p>彎 2 目前的車速（0.95 m/s）已超過舵機打到底能轉的極限（約 0.87 m/s），所以每圈都打到底。要更快，必須在進彎前就開始轉（前饋），不能等相機看到。</p></div>
+<div class="box"><h3>高速時相機來不及</h3><p>約 1.0～1.1 m/s 以上，只靠相機入彎一定會晚。地標定位可以預告彎 2、彎 3 的位置（誤差 0.2～0.3 m），彎 1 太粗還不行。</p></div>
+<div class="box"><h3>上段佔一圈的 16%</h3><p>高架段 7 m 要走約 11.5 秒。虛線轉彎受限於「看到虛線時已經只剩 0.9 m」，不是抓地力。</p></div>
+<div class="box"><h3>估計（離線模型）</h3><p>只調設定：約 70.5～71 秒。<br/>加上直線位置式油門：約 69 秒。<br/>再加前饋轉向：約 65～68 秒。<br/>60 秒在目前油門上限下做不到。</p></div>
+</div></div>
+<aside class="teacher-note"><b>講者備註</b>這些是離線模型的估計，已打折（彎道 ×0.9、其餘 ×0.6），實車尚未驗證。</aside>
+</section>
+
+<section class="slide" data-chapter="04 關鍵發現" data-title="高架上段：轉完彎後，路其實是個漏斗" data-lead="從遮罩量出兩條外側邊線的間距：由約 135 cm 收到坡口約 60 cm。">
+<div class="slide-content"><figure class="figure dark wide"><img src="upper-funnel.jpg" alt="六格高架上的畫面，標出左右邊線在不同前方距離的間距，從 137 公分逐漸縮到約 55 公分"/></figure>
+<div class="cols" style="margin-top:18px"><div><ul><li>原本的程式只找中間的虛線；虛線結束後約 3 秒只靠陀螺儀保持方向，沒有任何橫向資訊。</li><li>實際上兩條外側邊線一直都在遮罩裡，只是比一般車道寬得多，原本的估計不認得。</li></ul></div>
+<div><div class="callout warn">限制：邊線只在車前 0.8～2.5 m 看得到，坡頂前最後一公尺仍然看不到；所以它能修正方向，幫不了最後一段。此項修正已完成離線、尚未上車。</div></div></div></div>
+<aside class="teacher-note"><b>講者備註</b>圖上的公分數是用平地投影估的，高架上有約 8% 的比例誤差，是量級參考不是精確值。</aside>
+</section>
+
+<!-- ============ 05 放棄的方法 ============ -->
+<section class="slide" data-chapter="05 放棄的方法" data-title="試過但放棄：影像與路徑" data-lead="每一項都有資料支持「為什麼不用」。">
+<div class="slide-content"><div class="table-wrap"><table><thead><tr><th>方法</th><th>想解決什麼</th><th>放棄原因</th></tr></thead><tbody>
+<tr><td>分割模型 V5</td><td>提高辨識</td><td>整體驗證未通過，維持 V4</td></tr>
+<tr><td>彎道外移（路徑往外推 5～10 px）</td><td>彎道壓內線</td><td>彎向判斷有反向的格子；之後改用別的算法</td></tr>
+<tr><td>整合式路口算法（K 系列）作為一般循線</td><td>路口選路</td><td>路徑耗時高（約 47 ms）；一般道路改用獨立線估計，直線判讀 11／11 較接近中心</td></tr>
+<tr><td>線外退回規則</td><td>擋掉指向跑道外的路徑</td><td>現行也無目標時擋錯 3／4</td></tr>
+<tr><td>實體車道寬（46 cm）取代像素比例</td><td>單線估計的跳動</td><td>跳動 17→16，最大跳動反而變大；真正的大跳動是左右線認錯</td></tr>
+<tr><td>上段用實線邊線</td><td>虛線轉彎後的參考</td><td>遮罩中虛線常黏成長線，認錯誤差約 55 cm（後來改用外側兩條邊線，仍在評估）</td></tr>
+<tr><td>下坡時預瞄遠處的彎 4</td><td>落地後轉不夠</td><td>看得到彎，但無法預測車子需要多少轉向（區分能力等於亂猜）</td></tr>
+</tbody></table></div></div>
+</section>
+
+<section class="slide" data-chapter="05 放棄的方法" data-title="試過但放棄：控制與流程" data-lead="其中幾項是離線看起來可行、上車後才發現不行。">
+<div class="slide-content"><div class="table-wrap"><table><thead><tr><th>方法</th><th>想解決什麼</th><th>放棄原因</th></tr></thead><tbody>
+<tr><td>記住一圈的方向照著走</td><td>不靠相機過路口與坡底</td><td>各圈方向差 2～6°，盲走 3 m 橫偏超過餘裕；只保留「定位」用途</td></tr>
+<tr><td>路口內直行（忽略相機）</td><td>路口走錯</td><td>進路口時車頭本來就偏 2.9°，模擬橫偏變大</td></tr>
+<tr><td>補償門檻 30→60</td><td>直線微擺</td><td>實跑擺幅 1.6°→3.7°、圈速慢 3 秒，當場退回</td></tr>
+<tr><td>舵機中心 1500</td><td>直線固定偏差</td><td>直線變好但坡底 3 次失敗 2 次；退回 1480</td></tr>
+<tr><td>自動舵機中心</td><td>免手動調中心</td><td>估計器左右平均偏高，關閉</td></tr>
+<tr><td>彎 2 最小舵量保持</td><td>彎 2 轉不夠</td><td>轉太多、反覆啟動，當輪關閉</td></tr>
+<tr><td>坡上專用轉向律</td><td>下坡擺動</td><td>上車後車到坡底偏外側、擺動未減，退回；後來發現擺動約一半來自線來源切換</td></tr>
+<tr><td>轉彎後加速＋滑行</td><td>上段提速</td><td>滑行把車壓到 0.25 m/s，且未對準就加速造成過衝 16°</td></tr>
+<tr><td>一輪改一項的補丁方式</td><td>快速修問題</td><td>單圈完成率只有五成多，改為凍結、重複、整合</td></tr>
+</tbody></table></div>
+<div class="callout">硬體限制下不做的事：提高油門上限需要重新燒錄韌體，依規則改用數值調整。</div>
+</div>
+</section>
+
+<!-- ============ 06 現況 ============ -->
+<section class="slide" data-chapter="06 現況與下一步" data-title="目前狀態（2026-11-15）" data-lead="車上版本、已驗證與未驗證分開列。">
+<div class="slide-content"><div class="cols"><div>
+<div class="box"><h3 class="ok">已實車驗證</h3><ul>
+<li>連續 4 圈約 72 秒（11-15）。</li>
+<li>地標定位、位置式減速區、各彎油門。</li>
+<li>彎 3 丟線修正：丟線由 7／21 次降到 3／15 次。</li>
+<li>彎 2 進彎舵量下限：完全不打到底的通過由 1／21 提高到 7／15。</li>
+<li>卡住停車、急停去彈跳、通訊回覆遺失不結束該輪。</li></ul></div>
+</div><div>
+<div class="box"><h3 style="color:var(--warm)">已完成離線、尚未上車</h3><ul>
+<li>坡底轉不夠的修正（依落後量放寬上限、改用正確路徑）。</li>
+<li>彎 2 舵量下限延長到彎中。</li>
+<li>上段用外側兩條邊線當方向基準。</li>
+<li>下坡車道寬比例修正。</li>
+<li>直線位置式油門、進彎前饋轉向。</li></ul></div>
+<div class="callout warn">以上離線項目只有開迴路重播的證據，車上行為未知。</div>
+</div></div></div>
+</section>
+
+<section class="slide" data-chapter="06 現況與下一步" data-title="下一步" data-lead="先可靠、後提速。">
+<div class="slide-content"><div class="cols"><div>
+<ul class="steps">
+<li><span><b>到場檢查</b>：核對鏡頭姿態、同步紀錄、量上段與坡口尺寸。</span></li>
+<li><span><b>第 1 輪</b>：坡底修正＋彎 2 下限延長＋上段方向基準（三個不同路段）。</span></li>
+<li><span><b>第 2 輪</b>：上段轉彎後加速（不用滑行）。</span></li>
+<li><span><b>第 3 輪</b>：下坡車道寬修正。</span></li>
+<li><span><b>之後各自單獨</b>：直線加速門檻、位置式油門、彎 1 舵量下限。</span></li></ul>
+</div><div>
+<div class="table-wrap"><table><thead><tr><th>目標</th><th>需要什麼</th></tr></thead><tbody>
+<tr><td>約 71 秒</td><td>只調設定</td></tr>
+<tr><td>約 69 秒</td><td>加上直線位置式油門</td></tr>
+<tr><td>約 65～68 秒</td><td>再加進彎前饋轉向、上段再快 1.5～2 秒</td></tr>
+<tr><td>60 秒</td><td>目前油門上限下做不到</td></tr>
+</tbody></table></div>
+<div class="callout">待處理的硬體項目：急停線加上拉電阻與電容、起步偶發暴衝的檢查、舵機與主電共用電源的雜訊。</div>
+</div></div></div>
+</section>
+
+<section class="slide" data-chapter="06 現況與下一步" data-title="這個專案學到的事" data-lead="技術之外的四點。">
+<div class="slide-content"><div class="cards two">
+<div class="box"><h3>先量測，再設計</h3><p>轉向間隙、實際直行點、延遲、各彎半徑，量出來的數字常和假設差很多。量之前調的參數，量之後多半要重調。</p></div>
+<div class="box"><h3>離線通過不等於實車可行</h3><p>重播能證明「沒改壞」，不能證明「會變好」。11-15 三項離線合理的修改，上車後兩項變差。</p></div>
+<div class="box"><h3>補丁有上限</h3><p>累積到 72 層之後，新補丁修好一處、弄壞另一處。停下來盤點與重構，比繼續加更快。</p></div>
+<div class="box"><h3>把結論的更正也記下來</h3><p>多個「當時確定」的原因後來被推翻。紀錄中保留更正，才不會重複走同一條錯路。</p></div>
+</div></div>
+</section>
+
+</main>
+<script src="../../assets/deck.js"></script>
+</body></html>
