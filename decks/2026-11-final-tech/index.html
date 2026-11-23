@@ -54,17 +54,16 @@
 </section>
 
 <!-- P04 -->
-<section class="slide" data-chapter="03 路徑" data-title="配對左右內緣求出中心路徑，近列給 PID、遠列作預看" data-lead="camera-pair-v2：全程以影像像素比例計算" data-wiki="path/mask-to-path,path/junction-handling,control/pid-core">
+<section class="slide dense" data-chapter="03 路徑" data-title="配對左右內緣求出中心路徑，近列給 PID、遠列作預看" data-lead="camera-pair-v2：全程以影像像素比例計算" data-wiki="path/mask-to-path,path/junction-handling,control/pid-core">
 <div class="slide-content"><div class="cols"><div>
 <figure class="figure"><img src="p04-path-overlay.webp" alt="遮罩疊上中心路徑，標出路徑最近與最遠點"/><figcaption class="figcap">11-19 實跑畫面（run-1f77）；模型權重與最終版相同（8b802fa0），控制版本較早，非 11-23 最終版錄影。取樣列未畫（高度基準待確認）。</figcaption></figure>
 </div><div>
 <ul class="steps">
 <li><span>在遮罩第 140～340 列每 4 列取樣，找白線並取靠車道一側的「內緣」。</span></li>
-<li><span>左右能配對就取中點；只看到一邊時，用「車道寬比例×該列應有車道寬」往內推半個車道。</span></li>
+<li><span>左右能配對就取中點；只看到一邊時，用「\(\text{車道寬比例} \times \text{該列應有車道寬}\)」往內推半個車道。</span></li>
 <li><span>近列誤差（影像高度 0.6 處）給 PID；遠列（0.45 處）先做透視正規化，再低通當方向預看。</span></li>
 </ul>
-<div class="codebox"><pre><code>e = e_near + LPF( 0.2·(e_far_proj − e_near) ),  τ = 0.15 s
-e_far_proj = e_far × W(near) / W(far)</code></pre></div>
+<div class="codebox"><div class="math-block">\[\begin{aligned}e &= e_{\text{near}} \\ &\quad + \mathrm{LPF}_{\tau = 0.15\,\text{s}}\!\Big(0.2\,\big(e_{\text{far,proj}} - e_{\text{near}}\big)\Big)\end{aligned}\]\[e_{\text{far,proj}} = e_{\text{far}} \times \frac{W(\text{near})}{W(\text{far})}\]</div></div>
 <p>透視正規化避免「平行但偏移的車道」因透視收斂被誤當成方向誤差。路口另有路口切換處理。</p>
 </div></div></div>
 <aside class="teacher-note"><b>講者備註</b>Wiki 來源：path/mask-to-path、path/junction-handling、control/pid-core。待決：H-2；圖上取樣列未畫。</aside>
@@ -100,8 +99,7 @@ e_far_proj = e_far × W(near) / W(far)</code></pre></div>
 <tr><td>航向</td><td>相機看不清時鎖住方向（路口、坡上）；地標定位</td></tr>
 <tr><td>車頭轉速 gz</td><td>內迴圈阻尼、彎道前饋的轉速項</td></tr>
 </tbody></table></div>
-<div class="codebox"><pre><code>相對俯仰 = pitch − 1.0°
-ψ_k = ψ_(k−1) + ½(gz_k + gz_(k−1))·Δt</code></pre></div>
+<div class="codebox"><div class="math-block">\[\theta_{\text{相對}} = \theta_{\text{pitch}} - 1.0^{\circ}\]\[\psi_k = \psi_{k-1} + \tfrac{1}{2}\,\big(g_{z,k} + g_{z,k-1}\big)\,\Delta t\]</div></div>
 <p>MPU6050 接在 Orin 的 I²C；11-05 版紀錄程式以 50 Hz 讀取、互補濾波（α 0.98）。控制端只接受 0.3 s 以內的資料。</p>
 </div></div></div>
 <aside class="teacher-note"><b>講者備註</b>Wiki 來源：synthesis/imu-roles、hardware/imu-mpu6050、sources/nvidia-carrier-board-spec。待決：H-1（現役紀錄程式未凍結，只能說 11-05 版）；worker 端平地基準預設 2.6 與控制端 1.0 不同，影響未評估。</aside>
@@ -111,7 +109,7 @@ e_far_proj = e_far × W(near) / W(far)</code></pre></div>
 <section class="slide dense" data-chapter="04 IMU 輔助" data-title="S 型來自迴路延遲；陀螺儀內迴圈即時抵銷，路口用平均航向保持方向" data-lead="間隙補償是另一個機制，處理的是連桿空行程" data-wiki="control/yaw-inner,experiments/s-weave,control/heading-hold,control/play-comp">
 <div class="slide-content"><div class="cols"><div>
 <p>11-07 的分析認為：直線 S 型是「兩次積分＋迴路延遲」造成的臨界迴路，調 kp／kd／車速改不掉週期，因此加入陀螺儀內迴圈：把 PID 舵量解讀成「希望轉多快」，用量到的 gz 補差額。</p>
-<div class="codebox"><pre><code>term = clip( 4·(g(v)·u + gz), ±120 µs )</code></pre></div>
+<div class="codebox"><div class="math-block">\[\text{term} = \operatorname{clip}\!\Big(4\,\big(g(v)\,u + g_z\big),\ \pm 120\,\mu\text{s}\Big)\]</div></div>
 <div class="table-wrap"><table><thead><tr><th>11-18 內迴圈增益 6→4</th><th>主直線 gz 標準差（°/s，逐圈）</th></tr></thead><tbody>
 <tr><td>改前 run-7a70</td><td>16.7／8.7／22.1</td></tr>
 <tr><td>改後 run-6c1e</td><td>6.4／7.0／6.5／10.5／12.8</td></tr>
@@ -119,19 +117,17 @@ e_far_proj = e_far × W(near) / W(far)</code></pre></div>
 <div class="callout warn">同時期一輪對照、非控制實驗：兩輪之間還有其他改動，不能據此宣稱因果；「加入內迴圈前後」的改善幅度無法從現存紀錄量化。</div>
 </div><div>
 <figure class="figure"><img src="p07-junction.png" alt="斜線路口段的航向差、gz、舵量與層狀態"/><figcaption class="figcap">run-b541（11-23 最終版）逐格紀錄重繪：第 1 圈 V 字路口，航向保持作用 57 格，航向差最大 2.42°。</figcaption></figure>
-<p>路口：以進路口前的平均航向為參考，<code>中心 + I + 10·Δψ + 1.2·gz + 相機微調</code>；航向差超過 12° 就放手。</p>
+<p>路口：以進路口前的平均航向為參考，\(\text{中心} + I + 10\,\Delta\psi + 1.2\,g_z + \text{相機微調}\)；航向差超過 12° 就放手。</p>
 </div></div></div>
 <aside class="teacher-note"><b>講者備註</b>Wiki 來源：control/yaw-inner、experiments/s-weave、control/heading-hold、control/play-comp。待決：D3（兩次離線模型對內迴圈角色結論相反）、D4／C-2（0.75 s 為 11-07 迴路總延遲估計〔互相關〕，與指令→車頭 0.24～0.30 s 定義不同，本頁不寫數字）、B-2（路口窗口位置）。圓圈路口 k_psi 為 12，本頁公式為 V 字路口值。</aside>
 </section>
 
 <!-- P08 -->
-<section class="slide" data-chapter="05 彎道與坡道" data-title="急彎依 IMU 已轉角度查曲率表預先給舵，PID 只修正差值" data-lead="帶狀前饋全權：相機看不到內側線時仍能轉完" data-wiki="control/curve-band-ff,synthesis/imu-roles,control/lap-position">
+<section class="slide dense" data-chapter="05 彎道與坡道" data-title="急彎依 IMU 已轉角度查曲率表預先給舵，PID 只修正差值" data-lead="帶狀前饋全權：相機看不到內側線時仍能轉完" data-wiki="control/curve-band-ff,synthesis/imu-roles,control/lap-position">
 <div class="slide-content"><div class="cols"><div>
 <figure class="figure"><img src="p08-c2-band.png" alt="彎 2 已轉角度、前饋目標、實送舵量、近誤差"/><figcaption class="figcap">run-b541（11-23 最終版）逐格紀錄重繪：第 1 圈彎 2，帶狀前饋作用 125 格。</figcaption></figure>
 </div><div>
-<div class="codebox"><pre><code>舵量 = 中心 + κ(θ)/g(v)
-     + clip(220·(e_near − e_c(θ)))
-     + clip(1.5·(gz + v·κ), ±60)</code></pre></div>
+<div class="codebox"><div class="math-block">\[\begin{aligned}\text{舵量} &= \text{中心} + \frac{\kappa(\theta)}{g(v)} \\ &\quad + \operatorname{clip}\!\Big(220\,\big(e_{\text{near}} - e_c(\theta)\big)\Big) \\ &\quad + \operatorname{clip}\!\Big(1.5\,\big(g_z + v\,\kappa\big),\ \pm 60\Big)\end{aligned}\]</div></div>
 <p>θ＝IMU 量到的已轉角度；κ(θ)＝跑道曲率表；e_c(θ)＝該角度車在置中時相機會看到的誤差（靜態置中量測）。</p>
 <div class="table-wrap"><table><thead><tr><th>彎</th><th>負責層</th></tr></thead><tbody>
 <tr><td>彎 1、彎 2</td><td>位置觸發的帶狀前饋，全權</td></tr>
@@ -146,9 +142,7 @@ e_far_proj = e_far × W(near) / W(far)</code></pre></div>
 <section class="slide dense" data-chapter="05 彎道與坡道" data-title="俯仰切出坡道各段；坡上與落地初段由陀螺儀依目標航向轉向" data-lead="落地需離坡口 ≥1.2 m 或坡上 ≥1.0 s 才成立" data-wiki="control/slope-downhill,synthesis/imu-roles">
 <div class="slide-content"><div class="cols"><div>
 <div class="pipeline"><span>俯仰 ≥5°<br/>上坡加油門</span><b>→</b><span>坡頂<br/>鎖定處理</span><b>→</b><span>坡上全程<br/>航向律轉向</span><b>→</b><span>落地 0～1.2 m<br/>航向律</span><b>→</b><span>落地上限<br/>＋彎 4 帶狀</span></div>
-<div class="codebox"><pre><code>舵量 = 中心 + κ/g
-     + clip(10·(ψ − θ(u)), ±120)
-     + clip(1.5·(gz + κv), ±60)</code></pre></div>
+<div class="codebox"><div class="math-block">\[\begin{aligned}\text{舵量} &= \text{中心} + \frac{\kappa}{g} \\ &\quad + \operatorname{clip}\!\Big(10\,\big(\psi - \theta(u)\big),\ \pm 120\Big) \\ &\quad + \operatorname{clip}\!\Big(1.5\,\big(g_z + \kappa\,v\big),\ \pm 60\Big)\end{aligned}\]</div></div>
 <p>ψ 以「上層直線的絕對航向」為基準；θ(u) 是依位置的目標航向表（良好落地的中位數）。</p>
 </div><div>
 <figure class="figure"><img src="p09-slope.png" alt="一趟坡道的俯仰、航向誤差、舵量對距離"/><figcaption class="figcap">run-b541（11-23 最終版）逐格紀錄重繪：第 1 圈坡道，橫軸為自上坡起點里程；圖中 land4 航向欄位含義待確認。</figcaption></figure>
@@ -162,8 +156,7 @@ e_far_proj = e_far × W(near) / W(far)</code></pre></div>
 <div class="slide-content"><div class="cols"><div>
 <figure class="figure"><img src="track-map.webp" alt="跑道示意圖，點位 01 到 12、起點旗子與行駛方向"/><figcaption class="figcap">統一跑道地圖（示意，不含實量尺寸）。彎 1＝01～02、彎 2＝03～04、彎 3＝06～09、彎 4＝11～12。</figcaption></figure>
 </div><div>
-<div class="codebox"><pre><code>里程 = 計數 × 0.000222 m
-s = s_nom(地標) + (D − D_cross(地標))</code></pre></div>
+<div class="codebox"><div class="math-block">\[\text{里程} = \text{計數} \times 0.000222\ \text{m}\]\[s = s_{\text{nom}}(\text{地標}) + \big(D - D_{\text{cross}}(\text{地標})\big)\]</div></div>
 <ul class="steps">
 <li><span>不用相機：只用後輪編碼器里程、陀螺儀積分航向與俯仰。</span></li>
 <li><span>地標＝彎道起訖的航向轉折、坡道起訖的俯仰轉折，共 13 個；找到就對齊到標稱位置。</span></li>
@@ -179,8 +172,7 @@ s = s_nom(地標) + (D − D_cross(地標))</code></pre></div>
 <div class="slide-content">
 
 <div class="cols"><div>
-<div class="codebox"><pre><code>u = kp·e + ki·I + kd·D
-steer = 中心 1445 + u × (右 1.45／左 1.5)</code></pre></div>
+<div class="codebox"><div class="math-block">\[u = k_p\,e + k_i\,I + k_d\,D\]\[\text{steer} = 1445 + u \times \begin{cases} 1.45 & (\text{右},\ u \ge 0) \\ 1.5 & (\text{左},\ u < 0) \end{cases}\]</div></div>
 <p>間隙補償：命令上次往右移就 +15 µs、往左就 −15 µs，換向門檻 15 µs，吃掉新舵機約 60 µs 的連桿空行程。</p>
 </div><div>
 <div class="table-wrap"><table><thead><tr><th>油門步驟</th><th>內容</th></tr></thead><tbody>
@@ -197,8 +189,7 @@ steer = 中心 1445 + u × (右 1.45／左 1.5)</code></pre></div>
 <!-- P12 -->
 <section class="slide" data-chapter="07 通訊與安全" data-title="UART 每包帶序號與 CRC，指令 500 ms 未更新即鎖定" data-lead="115200 bps、8N1；實體急停需連續低電位 10 ms" data-wiki="comms/uart-protocol,sources/nvidia-carrier-board-spec">
 <div class="slide-content"><div class="cols"><div>
-<div class="codebox"><pre><code>$SEQ,命令,參數*CRC16\n
-CRC16/CCITT-FALSE：多項式 0x1021、初值 0xFFFF</code></pre></div>
+<div class="codebox"><pre><code>$SEQ,命令,參數*CRC16\n</code></pre><div class="math-block">CRC16/CCITT-FALSE：\[G(x) = x^{16} + x^{12} + x^{5} + 1 \quad (\texttt{0x1021}),\qquad \text{初值} = \texttt{0xFFFF}\]</div></div>
 <div class="table-wrap"><table><thead><tr><th>欄位</th><th>作用</th></tr></thead><tbody>
 <tr><td>SEQ</td><td>遞增序號，控制板以序號與 generation 排除舊命令</td></tr>
 <tr><td>命令＋參數</td><td>左右油門百分比＋舵機脈寬</td></tr>
@@ -222,7 +213,7 @@ CRC16/CCITT-FALSE：多項式 0x1021、初值 0xFFFF</code></pre></div>
 <div class="slide-content"><div class="cols"><div>
 <div class="cards two">
 <div class="box"><h3>圈速</h3><p><span class="num">56.5／56.8 s</span><br/>賽前實測（run-b541，11-23），非正式比賽成績；最終版只跑過這一輪。</p></div>
-<div class="box"><h3>效能比</h3><p><span class="num">約 83%</span><br/>推算：67.6 m ÷ 56.5 s ÷ 1.44 m/s；最終版沒有效能比紀錄。</p></div>
+<div class="box"><h3>效能比</h3><p><span class="num">約 83%</span><br/>推算：\(67.6\ \text{m} \div 56.5\ \text{s} \div 1.44\ \text{m/s}\)；最終版沒有效能比紀錄。</p></div>
 </div>
 <div class="table-wrap"><table><thead><tr><th>項目</th><th>中位</th><th>P95</th></tr></thead><tbody>
 <tr><td>推論＋路徑（一格）</td><td>57.4 ms</td><td>71.9 ms</td></tr>

@@ -99,3 +99,17 @@
   const m = location.hash.match(/^#s(\d+)$/);
   go(m ? +m[1] - 1 : 0, false);
 })();
+
+/* LaTeX 數學式：簡報內有 \( … \) 或 \[ … \] 時才載入 KaTeX（固定版本 0.16.11）並自動排版；沒有數學式的簡報不受影響。 */
+(() => {
+  'use strict';
+  const main = document.querySelector('main.deck');
+  const BS = String.fromCharCode(92), html = main ? main.innerHTML : '';
+  if (!main || (html.indexOf(BS + '(') < 0 && html.indexOf(BS + '[') < 0)) return;
+  const CDN = 'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/';
+  const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = CDN + 'katex.min.css'; document.head.appendChild(css);
+  const load = src => new Promise((ok, bad) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = bad; document.head.appendChild(s); });
+  load(CDN + 'katex.min.js').then(() => load(CDN + 'contrib/auto-render.min.js')).then(() => {
+    window.renderMathInElement(document.body, { delimiters: [{ left: BS + '[', right: BS + ']', display: true }, { left: BS + '(', right: BS + ')', display: false }], throwOnError: false });
+  }).catch(() => {});
+})();
