@@ -38,3 +38,6 @@
 .slide.dense .figure.short img{max-height:25vh}
 .math-block{margin:6px 0;padding:2px 12px;border:1px solid var(--line);border-radius:10px;overflow-x:auto}
 .math-block .katex-display{margin:.2em 0}
+.math-svg svg{vertical-align:middle;max-width:100%;height:auto}
+.math-svg.math-display{display:block;text-align:center;margin:.3em 0;overflow-x:auto}
+.math-svg.math-display svg{display:inline-block}
