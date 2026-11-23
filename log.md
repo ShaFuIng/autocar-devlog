@@ -19,3 +19,7 @@
 - 內容：15 頁競賽技術簡報草稿（Workflow 節點 F），依 autocar-wiki deck/outline.md P01～P15；每頁 data-wiki 標出所用 Wiki 條目。
 - 依據：autocar-wiki 條目（至 2026-11-23）；圖片由 autocar-wiki/tools/build_deck_media.py 產生：感知頁用 run-1f77（11-19，模型權重同最終版、控制版本較早），控制頁用 run-b541（11-23 最終版）逐格紀錄；畫面上半部先模糊。
 - 待補：自動／手動曝光對照畫面、P11 一格實例、P12 時序圖、P14 圈速時間線圖；D1／D2 封面成績與效能比推算值待人決定；P05 無效格統計口徑（8 對 10 格）待核對。
+
+## [2026-11-23] 新增 | 2026-11-final-tech/llm-wiki
+- 內容：簡報所用 LLM Wiki 的公開精簡版（條目、Schema、Workflow、檢查紀錄、工具）；原始資料檔不公開，只附 MANIFEST。
+- 依據：本機 autocar-wiki（11-23）。發布前掃描不公開資訊，移除工具中的主機與網路名稱清單。
