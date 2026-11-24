@@ -4,6 +4,8 @@ title: IMU（MPU6050）硬體、紀錄程式與校正
 status: implemented
 sources:
   - raw/project/imu-new-20261105/imu_logger.py
+  - raw/project/imu-still-boot-20261105/candidate/imu_logger.py
+  - raw/project/imu-still-boot-20261105/deployment-acceptance.json
   - raw/project/imu-new-20261105/acceptance.json
   - raw/project/snapshot-20261123d/imu_boost.json
   - raw/project/snapshot-20261123d/imu_boost.py
@@ -33,13 +35,18 @@ updated: 2026-11-23
 - 感測器設定：數位低通約 44 Hz（濾馬達振動）、陀螺儀量程 ±250 dps、加速度計量程 ±2 g [src: raw/project/imu-new-20261105/imu_logger.py#L53-L55]。
 - 名詞：**I²C** 是兩條線（時脈、資料）的低速匯流排；Orin 40-pin 擴充排針上有兩組 I²C、電位 3.3 V [src: raw/official/nvidia-jetson-orin-nano-carrier-board-SP-11324-001-v1.3.pdf]（官方規格書第 21 頁）。MPU6050 接在哪兩腳原始資料未記載。
 
-### 紀錄程式 imu_logger.py（11-05 版 imu-logger-r5）
+### 紀錄程式 imu_logger.py
+
+**版本更正（11-24）**：11-05 18:59 起車上換成 imu-logger-r6 [src: raw/project/imu-still-boot-20261105/deployment-acceptance.json] [src: raw/project/imu-still-boot-20261105/candidate/imu_logger.py#L1]。r6 相對 r5 只改「啟動時估零點」：最多等 120 s 直到車靜止才估，靜止失敗時改用新晶片的參考零點；取樣率、濾波、輸出格式都沒有改 [src: raw/project/imu-still-boot-20261105/candidate/imu_logger.py#L31-L35] [src: raw/project/imu-still-boot-20261105/candidate/imu_logger.py#L78-L88]。之後的紀錄沒有再更換紀錄程式的記載，所以 r6 是最近一次有紀錄的部署版本；最終版車上是否仍是 r6，沒有逐檔核對（未連線 Orin）。以下逐條引用 r5 檔，與 r6 相同的部分不受影響。
+
+**最終版實際更新頻率的佐證**：最終版實跑 run-b541 的 2804 格中，控制端讀到的 IMU 資料年齡為 −0.007～0.024 s、中位 0.010 s、P95 0.020 s（由 tools/stats_imu_age.py 自逐格紀錄 pid.jsonl 計算）[src: raw/records/runs/run-b541-20261123/summary.json]。年齡不超過約一個 20 ms 週期，與 50 Hz 取樣相符。這是推論，不是直接讀到的設定。
 
 1. 喚醒後先丟掉 0.3 s 的讀數（剛喚醒的值不可靠）[src: raw/project/imu-new-20261105/imu_logger.py#L72-L73]。
 2. **每次啟動時用靜止的 1 秒估陀螺儀零點**：收集 1 s 讀數，若加速度大小變動 < 0.05 g 且陀螺儀標準差 < 1.0 dps 判為靜止，零點取這 1 s 平均；否則改用 10-19 的參考零點並在檔頭註明 [src: raw/project/imu-new-20261105/imu_logger.py#L74-L82] [src: raw/project/imu-new-20261105/imu_logger.py#L85]。因此「重新校準」就是讓車靜止後重啟紀錄服務 [src: raw/records/logs/AGENTS.md#L101]。
 3. **互補濾波**算俯仰與側傾：以陀螺儀角速度積分為主（權重 0.98），再用加速度計算出的傾角（權重 0.02）拉回，避免積分漂移 [src: raw/project/imu-new-20261105/imu_logger.py#L33] [src: raw/project/imu-new-20261105/imu_logger.py#L100-L107]。
 4. **航向 yaw**＝扣掉零點後的 gz 直接積分，左轉為正；它是相對於紀錄程式啟動時的角度，會隨殘餘零點漂移 [src: raw/project/imu-new-20261105/imu_logger.py#L35-L36] [src: raw/project/imu-new-20261105/imu_logger.py#L103]。
 5. 取樣率預設 50 Hz [src: raw/project/imu-new-20261105/imu_logger.py#L67]；每 5 筆以「先寫暫存檔再改名」的方式原子更新 `latest.json`（含 t、pitch_deg、roll_deg、yaw_deg、gyro_dps）[src: raw/project/imu-new-20261105/imu_logger.py#L40] [src: raw/project/imu-new-20261105/imu_logger.py#L109-L113]，所以讀取端看到的更新率是 50 ÷ 5 ＝ 10 次/s（推算）。完整逐筆紀錄另寫入 jsonl 檔 [src: raw/project/imu-new-20261105/imu_logger.py#L114-L115]。
+   - **11-10 起改為每 1 筆更新**：11-10 08:27 把 LATEST_EVERY 由 5 改成 1，`latest.json` 由 10 Hz 變成 50 Hz，當時實測每秒 50.3 次、間隔 20 ms [src: raw/records/logs/AGENTS_HISTORY_until_20261119.md#L17]。最終版實跑的 IMU 資料年齡 0～24 ms 也與此相符。這個改動晚於本機凍結的 r5／r6 檔，所以兩份檔案裡的 LATEST_EVERY 仍是 5 [src: raw/project/imu-still-boot-20261105/candidate/imu_logger.py#L44]。
 6. 時間戳用 `time.monotonic()`，與 PID 紀錄的 capture_at／consumed_at 同一時鐘 [src: raw/project/imu-new-20261105/imu_logger.py#L4-L6]。
 7. 新晶片不套用加速度六面校正（舊晶片的值會讓靜止時 |a| 讀成 0.865 g），改由平地基準吸收零 g 偏移 [src: raw/project/imu-new-20261105/imu_logger.py#L23-L30] [src: raw/project/imu-new-20261105/acceptance.json#L3-L4]。
 
@@ -77,7 +84,7 @@ updated: 2026-11-23
 
 ## 未確認
 
-- 最終版車上執行的紀錄程式版本：raw 只有 11-05 的 imu_logger.py（r5），快照不含紀錄程式，現役是否相同未核對。 [src: raw/project/imu-new-20261105/imu_logger.py#L34]
+- 最終版車上執行的紀錄程式版本：最近一次有紀錄的部署是 r6（11-05 18:59），快照不含紀錄程式，未逐檔核對（使用者 11-23 決定不連線 Orin）[src: raw/project/imu-still-boot-20261105/deployment-acceptance.json]。systemd 啟動參數（是否帶 --rate）沒有本機副本；r6 預設 50 Hz [src: raw/project/imu-still-boot-20261105/candidate/imu_logger.py#L71]。
 - 【程式事實，影響未評估】worker 端 ground_identity 的平地基準不是 1.0：`ground_identity.json` 沒有設定 `flat_pitch_deg`，因此用程式預設 2.6 [src: raw/project/snapshot-20261123d/ground_identity.py#L23-L24] [src: raw/project/snapshot-20261123d/ground_identity.json]；它只在 |pitch−2.6| ≤ pitch_max_deg 4.0 時啟用地面比對 [src: raw/project/snapshot-20261123d/ground_identity.json#key=pitch_max_deg] [src: raw/project/snapshot-20261123d/ground_identity.py#L74] [src: raw/project/snapshot-20261123d/ground_identity.py#L202]。與控制端 1.0 相差 1.6°，對單線身分判斷的實際影響原始資料沒有評估。
 - IMU 的水平軸方向「從未以車輛運動驗證」是 10-19 版的說明 [src: raw/project/imu-new-20261105/imu_logger.py#L14-L15]；11-05 驗收時也寫軸向檢查（車頭朝上→pitch +、左轉→yaw +）尚未做 [src: raw/project/imu-new-20261105/acceptance.json#L7]。r4 註解另寫實測左轉積分 +90° [src: raw/project/imu-new-20261105/imu_logger.py#L35]，可視為 yaw 方向的部分驗證。
 - 下坡落地衝擊每次頂到加速度計量程 [src: raw/records/logs/AGENTS.md#L113]；量程 ±2 g 下對落地後俯仰的影響未量化。

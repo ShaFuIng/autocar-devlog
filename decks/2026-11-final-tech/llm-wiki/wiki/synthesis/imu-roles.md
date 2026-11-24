@@ -49,7 +49,7 @@ updated: 2026-11-23
 
 ## 未確認
 
-- IMU 紀錄程式的頻率、濾波係數只有 11-05 版可查，現役版本是否相同未證實。見 [[hardware/imu-mpu6050]] 與 `wiki/conflicts.md` 的 H-1。
+- IMU 紀錄程式最近一次有紀錄的部署是 r6（11-05 18:59，只改啟動零點）；最終版實跑的資料年齡 0～24 ms 與 50 Hz 相符，但車上檔案未逐檔核對 [src: raw/project/imu-still-boot-20261105/deployment-acceptance.json]。見 [[hardware/imu-mpu6050]] 與 `wiki/conflicts.md` 的 H-1。
 - 影像辨識端（worker）的地面判斷程式用自己的平地基準預設值，與控制端的 1.0° 不同（撰寫 [[hardware/imu-mpu6050]] 時發現）。它對最終版控制有沒有影響未查證。
 
 ## 相關條目

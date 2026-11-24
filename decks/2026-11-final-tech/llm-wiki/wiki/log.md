@@ -38,3 +38,6 @@
 ## [2026-11-23] 更新 | 簡報補圖（F／G）
 - P02 曝光對照（11-17 隧道口靜態比對，背景模糊；來源凍結為 raw/records/analyses/expo-20261117）、P11 一格命令計算鏈（run-b541 兩格實例）、P14 圈速時間線（依 experiments/lap-progression）。產生腳本 tools/build_missing_figs.py。
 - G：加圖後 P02、P11 超出一屏，次要清單移到講者備註後通過。
+
+## [2026-11-24] 更新 | IMU 紀錄程式版本更正
+- 使用者提問「為什麼用 11-05 版」後查出：11-05 18:59 已換成 r6（啟動等靜止再估零點），先前只凍結 r5。已補凍結 r6 與上車驗收紀錄，更新 hardware/imu-mpu6050、synthesis/imu-roles、conflicts H-1；新增 tools/stats_imu_age.py（最終版 IMU 資料年齡 0～24 ms，與 50 Hz 相符）。
