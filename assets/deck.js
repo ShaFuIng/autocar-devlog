@@ -113,3 +113,96 @@
     window.renderMathInElement(document.body, { delimiters: [{ left: BS + '[', right: BS + ']', display: true }, { left: BS + '(', right: BS + ')', display: false }], throwOnError: false });
   }).catch(() => {});
 })();
+
+/* 2026-11-final-tech P04：Near／Far 互動示意。只在頁面有 [data-nearfar] 時執行，其餘簡報不受影響。
+   參數依 Wiki（path/mask-to-path、control/pid-core）：遠處權重 0.2、LPF τ＝0.15 s、近列 0.6、遠列 0.45、誤差夾在 ±1。
+   SVG 中的車道寬與座標是概念示意，不是相機實測座標。 */
+(() => {
+  'use strict';
+  const roots = document.querySelectorAll('[data-nearfar]');
+  if (!roots.length) return;
+  const NS = 'http://www.w3.org/2000/svg';
+  const W = 320, H = 180, CX = 160;          // 概念畫面（非實際 1280×720 座標）
+  const Y_NEAR = 0.6 * H, Y_FAR = 0.45 * H;  // 取樣列高度比例（Wiki：0.6／0.45）
+  const TAU = 0.15, DT = 1 / 23.4;           // τ 依 Wiki；DT 依最終版約每秒 23.4 格（推算示意）
+  const DEF = { near: 0, far: 0, w: 0.2 };
+  const SCEN = { straight: { near: 0, far: 0 }, left: { near: -0.05, far: -0.45 }, right: { near: 0.05, far: 0.45 } };
+  const clip = (x, a, b) => Math.max(a, Math.min(b, x));
+  const laneW = y => 90 + (300 - 90) * (y - 60) / (H - 60);   // 概念：越遠越窄（透視）
+  const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+
+  roots.forEach(root => {
+    const svg = root.querySelector('svg.nf-scene'), plot = root.querySelector('svg.nf-plot');
+    const inp = { near: root.querySelector('[name=nf-near]'), far: root.querySelector('[name=nf-far]'), w: root.querySelector('[name=nf-w]') };
+    const out = n => root.querySelector('[data-out=' + n + ']');
+    svg.setAttribute('viewBox', `0 44 ${W} ${H - 44}`);   // 只顯示路面部分
+    plot.setAttribute('viewBox', '0 0 200 70');
+
+    function drawScene(v) {
+      svg.textContent = '';
+      el('rect', { x: 0, y: 0, width: W, height: H, fill: '#16222c' }, svg);
+      const ratio = laneW(Y_FAR) / laneW(Y_NEAR);                  // W(far)/W(near)
+      const xn = CX + v.near * 150, xf = CX + v.far * 150 * ratio; // 遠點像素偏移＝已換算誤差 × 遠處尺度
+      const xb = xn - (xf - xn) * 0.5, xt = xf + (xf - xn) * 0.8;   // 底部與上方延伸點（示意）
+      const key = [[xb, H], [xn, Y_NEAR], [xf, Y_FAR], [xt, 55]], pts = [];
+      for (let s = 0; s < key.length - 1; s++) for (let i = 0; i < 6; i++) {   // 分段線性插值，讓線段較平順
+        const u = i / 6; pts.push([key[s][0] + (key[s + 1][0] - key[s][0]) * u, key[s][1] + (key[s + 1][1] - key[s][1]) * u]);
+      }
+      pts.push(key[key.length - 1]);
+      const poly = (dx, col, wid, dash) => el('polyline', { points: pts.map(([x, y]) => `${(x + dx(y)).toFixed(1)},${y.toFixed(1)}`).join(' '), fill: 'none', stroke: col, 'stroke-width': wid, 'stroke-dasharray': dash || '' }, svg);
+      poly(y => -laneW(y) / 2, '#e8eef2', 5); poly(y => laneW(y) / 2, '#e8eef2', 5);          // 左右白線（示意）
+      poly(() => 0, '#81e9c7', 2.2);                                                          // 中心路徑
+      el('line', { x1: CX, y1: 50, x2: CX, y2: H, stroke: '#7f93a3', 'stroke-width': 1, 'stroke-dasharray': '3 3' }, svg);
+      const row = (y, label, x, col) => {
+        el('line', { x1: 4, y1: y, x2: W - 4, y2: y, stroke: col, 'stroke-width': 1, 'stroke-dasharray': '5 4' }, svg);
+        el('line', { x1: CX, y1: y, x2: x, y2: y, stroke: col, 'stroke-width': 3 }, svg);
+        el('circle', { cx: x, cy: y, r: 4.5, fill: col }, svg);
+        const bg = el('rect', { fill: '#0d1822', opacity: 0.85, rx: 3 }, svg);
+        const t = el('text', { x: W - 6, y: y - 5, fill: col, 'font-size': 10, 'text-anchor': 'end' }, svg); t.textContent = label;
+        try { const b = t.getBBox(); bg.setAttribute('x', b.x - 3); bg.setAttribute('y', b.y - 1); bg.setAttribute('width', b.width + 6); bg.setAttribute('height', b.height + 2); } catch (e) { bg.remove(); }
+      };
+      row(Y_FAR, 'Far 遠列（高度 0.45）', xf, '#ffbe75');
+      row(Y_NEAR, 'Near 近列（高度 0.6）', xn, '#81e9c7');
+      const c = el('text', { x: CX + 4, y: H - 6, fill: '#9fb2c1', 'font-size': 9 }, svg); c.textContent = '畫面中心';
+      const n = el('text', { x: 6, y: 56, fill: '#ffbe75', 'font-size': 9 }, svg); n.textContent = '概念示意，非相機實測座標';
+    }
+
+    function drawPlot(v, eStatic) {
+      plot.textContent = '';
+      el('rect', { x: 0, y: 0, width: 200, height: 70, fill: '#101b25' }, plot);
+      const raw = v.w * (v.far - v.near), k = DT / (TAU + DT), N = Math.round(1 / DT);
+      const ys = []; let d = 0;
+      for (let i = 0; i <= N; i++) { ys.push(clip(v.near + d, -1, 1)); d += k * (raw - d); }
+      const lo = Math.min(v.near, eStatic) - 0.05, hi = Math.max(v.near, eStatic) + 0.05;
+      const Y = e => 60 - 50 * (e - lo) / Math.max(0.1, hi - lo), X = i => 8 + 184 * i / N;
+      el('line', { x1: 8, y1: Y(eStatic), x2: 192, y2: Y(eStatic), stroke: '#ffbe75', 'stroke-dasharray': '4 3', 'stroke-width': 1 }, plot);
+      el('polyline', { points: ys.map((e, i) => `${X(i).toFixed(1)},${Y(e).toFixed(1)}`).join(' '), fill: 'none', stroke: '#81e9c7', 'stroke-width': 2 }, plot);
+      const i15 = Math.round(TAU / DT);
+      el('line', { x1: X(i15), y1: 6, x2: X(i15), y2: 64, stroke: '#5c7080', 'stroke-width': 1 }, plot);
+      const t1 = el('text', { x: X(i15) + 3, y: 66, fill: '#9fb2c1', 'font-size': 8 }, plot); t1.textContent = 't = τ = 0.15 s';
+      const t2 = el('text', { x: 192, y: 66, fill: '#9fb2c1', 'font-size': 8, 'text-anchor': 'end' }, plot); t2.textContent = '1 s';
+      return { e15: ys[i15], e1: ys[N], frac: raw === 0 ? null : (ys[i15] - v.near) / raw };
+    }
+
+    function update() {
+      const v = { near: +inp.near.value, far: +inp.far.value, w: +inp.w.value };
+      out('near').textContent = v.near.toFixed(2); out('far').textContent = v.far.toFixed(2); out('w').textContent = v.w.toFixed(2);
+      const eStatic = clip(v.near + v.w * (v.far - v.near), -1, 1);
+      out('static').textContent = (eStatic >= 0 ? '+' : '') + eStatic.toFixed(3);
+      drawScene(v);
+      const r = drawPlot(v, eStatic);
+      out('dyn').textContent = (r.e15 >= 0 ? '+' : '') + r.e15.toFixed(3);
+      out('dyn1').textContent = (r.e1 >= 0 ? '+' : '') + r.e1.toFixed(3);
+      out('frac').textContent = r.frac === null ? '—' : Math.round(r.frac * 100) + '%';
+    }
+    function set(vals, btn) {
+      for (const k in vals) inp[k].value = vals[k];
+      root.querySelectorAll('.nf-btns button[data-scen]').forEach(b => b.classList.toggle('on', b === btn));
+      update();
+    }
+    Object.values(inp).forEach(i => i.addEventListener('input', () => { root.querySelectorAll('.nf-btns button').forEach(b => b.classList.remove('on')); update(); }));
+    root.querySelectorAll('.nf-btns button[data-scen]').forEach(b => b.addEventListener('click', () => set(SCEN[b.dataset.scen], b)));
+    root.querySelector('.nf-btns button[data-reset]').addEventListener('click', () => set(Object.assign({}, DEF), root.querySelector('[data-scen=straight]')));
+    set(Object.assign({}, DEF), root.querySelector('[data-scen=straight]'));
+  });
+})();

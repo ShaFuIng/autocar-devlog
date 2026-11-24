@@ -41,3 +41,32 @@
 .math-svg svg{vertical-align:middle;max-width:100%;height:auto}
 .math-svg.math-display{display:block;text-align:center;margin:.3em 0;overflow-x:auto}
 .math-svg.math-display svg{display:inline-block}
+/* 2026-11-final-tech P04：Near／Far 互動示意（命名空間 .nf-，只作用於 [data-nearfar]） */
+.nf-grid{display:grid;grid-template-columns:minmax(0,.95fr) minmax(0,1.35fr) minmax(0,1fr);gap:16px;align-items:start}
+.nf-grid .figure img{max-height:190px;width:100%;object-fit:contain}
+.nf-grid .figcap{font-size:10px;line-height:1.4}
+.nf-widget{border:1px solid var(--line);border-radius:12px;background:#0d1822;padding:8px 10px}
+.nf-widget svg{width:100%;height:auto;display:block}
+.nf-widget svg.nf-scene{max-height:150px}
+.nf-widget svg.nf-plot{max-height:46px}
+.nf-tag{font:10px/1.4 ui-monospace,monospace;color:var(--warm);letter-spacing:.04em}
+.nf-ctrl{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px 10px;margin-top:4px}
+.nf-ctrl label{font-size:11px;color:var(--muted);line-height:1.3}
+.nf-ctrl output{float:right;font:12px ui-monospace,monospace;color:var(--accent)}
+.nf-ctrl input[type=range]{margin:4px 0 2px;height:12px}
+.nf-btns{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0}
+.nf-btns button{font-size:11px;padding:2px 9px}
+.nf-btns button.on{border-color:var(--accent);color:var(--accent)}
+.nf-out{display:grid;grid-template-columns:1fr 1.25fr;gap:8px;font-size:11px;line-height:1.35;color:var(--muted)}
+.nf-out b{color:var(--text);font:600 15px ui-monospace,monospace}
+.nf-out .nf-static b{color:var(--warm)}
+.nf-out .nf-dyn b{color:var(--accent)}
+.nf-steps{margin:0;padding:0;list-style:none;font-size:13px;line-height:1.45}
+.nf-steps li{margin:0 0 7px;padding-left:10px;border-left:2px solid #335b5c}
+.nf-steps b{color:var(--accent)}
+.nf-eqs{display:grid;grid-template-columns:1fr 1.25fr;gap:14px;margin-top:8px}
+.nf-eqs>div{border:1px solid var(--line);border-left:3px solid #4ea593;border-radius:8px;background:#14232e;padding:2px 12px 4px}
+.nf-eqs small{display:block;font-size:11px;color:var(--muted);margin-top:4px}
+.nf-eqs .math-svg.math-display{margin:.15em 0}
+@media(max-width:1050px){.nf-grid{grid-template-columns:1fr 1fr}.nf-grid>.nf-explain{grid-column:1/-1}.nf-eqs{grid-template-columns:1fr}}
+@media(max-width:760px){.nf-grid{grid-template-columns:1fr}.nf-ctrl{grid-template-columns:1fr}.nf-out{grid-template-columns:1fr}}
